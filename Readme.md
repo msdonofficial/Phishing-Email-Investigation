@@ -109,7 +109,7 @@ The sample emails use simulated data and reserved example domains and IP address
 ## Project Screenshots
 
 ### 1. Dashboard Overview
-![Dashboard Overview](screenshots/dashboard_overview.png)
+![Dashboard Overview]("C:\Users\msdon\Desktop\PhishingEmailInvestigation\screenshots\dashboard_overview.png.png")
 
 ### 2. Phishing Email Investigation
 ![Phishing Email Investigation](screenshots/phising_investigation.png)
