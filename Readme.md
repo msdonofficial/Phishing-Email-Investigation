@@ -112,16 +112,16 @@ The sample emails use simulated data and reserved example domains and IP address
 ![Dashboard Overview](screenshots/dashboard_overview.png.png)
 
 ### 2. Phishing Email Investigation
-![Phishing Email Investigation](screenshots/phising_investigation.png)
+![Phishing Email Investigation](screenshots/phising_investigation.png.png)
 
 ### 3. Indicators of Compromise (IOC) Analysis
-![IOC Analysis](screenshots/ioc_analysis.png)
+![IOC Analysis](screenshots/ioc_analysis.png.png)
 
 ### 4. Security Findings and Analyst Recommendation
-![Security Findings](screenshots/security_findings.png)
+![Security Findings](screenshots/security_findings.png.png)
 
 ### 5. Legitimate Email Investigation
-![Legitimate Email Investigation](screenshots/legitimate_email.png)
+![Legitimate Email Investigation](screenshots/legitimate_email.png.png)
 
 ### 6. Project Folder Structure
-![Project Structure](screenshots/project_structure.png)
+![Project Structure](screenshots/project_structure.png.png)
