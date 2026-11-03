@@ -1,278 +1,127 @@
-\# 🛡️ Phishing Email Investigation \& Detection System
+# SOC Phishing Email Investigation Tool
 
+## Project Overview
 
+The SOC Phishing Email Investigation Tool is a beginner-friendly cybersecurity project developed using Python and Streamlit.
 
-\## 📌 Project Overview
+It analyzes email files (`.eml`) to identify potentially suspicious indicators, calculate a phishing risk score, and generate investigation reports through an interactive SOC dashboard.
 
+## Features
 
+- Email header analysis (Sender, Recipient, Reply-To, Subject and Date).
+- Email body extraction, including HTML content.
+- URL and domain extraction.
+- IP address extraction and validation.
+- SPF, DKIM and DMARC authentication analysis.
+- Rule-based phishing risk scoring.
+- Threat classification (Low, Medium, High and Critical).
+- Automated SOC investigation report generation.
+- Interactive Streamlit dashboard.
+- Investigation history and severity filtering.
+- IOC visualization and report downloads.
 
-A Python-based Security Operations Center (SOC) project designed to investigate suspicious emails, extract Indicators of Compromise (IOCs), identify phishing indicators, calculate threat scores, and generate investigation reports.
+## Technologies Used
 
+- Python
+- Streamlit
+- Pandas
+- Regular Expressions
+- Python Email Parser
+- IP Address Validation
 
-
-The project includes an interactive Streamlit dashboard for monitoring email investigations and visualizing threat severity.
-
-
-
-\## 🎯 Objectives
-
-
-
-\- Analyze email headers and message content.
-
-\- Extract sender, recipient, subject, and date.
-
-\- Identify suspicious URLs and IP addresses.
-
-\- Examine email authentication results (SPF, DKIM, DMARC).
-
-\- Detect suspicious email characteristics.
-
-\- Calculate phishing risk scores.
-
-\- Classify emails based on threat severity.
-
-\- Generate SOC investigation reports.
-
-
-
-\## ⚙️ Technologies Used
-
-
-
-\- Python
-
-\- Streamlit
-
-\- Pandas
-
-\- Python Email Parsing Library
-
-\- Regular Expressions (Regex)
-
-
-
-\## 🔍 Key Features
-
-
-
-1\. Email Header Analysis
-
-2\. URL and IP Address Extraction
-
-3\. Email Authentication Analysis
-
-4\. Phishing Indicator Detection
-
-5\. Automated Risk Scoring
-
-6\. Threat Severity Classification
-
-7\. IOC Extraction
-
-8\. Automated Investigation Report Generation
-
-9\. Interactive SOC Dashboard
-
-10\. Investigation History and Filtering
-
-
-
-\## 📊 Threat Classification
-
-
-
-The system classifies investigated emails into four severity levels:
-
-
-
-| Severity | Description |
-
-|---|---|
-
-| Critical | Very high phishing risk |
-
-| High | High phishing risk |
-
-| Medium | Moderate phishing risk |
-
-| Low | Low detected risk |
-
-
-
-\## 📁 Project Structure
-
-
+## Project Structure
 
 ```text
-
 PhishingEmailInvestigation/
-
 │
-
-├── src/
-
-│   └── analyzer.py
-
-│
-
 ├── samples/
-
-│   ├── legitimate\_email.eml
-
-│   └── suspicious\_email.eml
-
+│   ├── legitimate_email.eml
+│   └── suspicious_email.eml
 │
-
+├── src/
+│   └── analyzer.py
+│
 ├── output/
-
-│   └── Investigation Reports
-
 │
-
 ├── dashboard.py
-
-├── requirements.txt
-
+│
 └── README.md
-
 ```
 
+## Installation and Setup
 
-
-\## 🚀 Installation and Setup
-
-
-
-\### 1. Clone the repository
-
-
+### 1. Clone the repository
 
 ```bash
-
-git clone YOUR\_GITHUB\_REPOSITORY\_URL
-
-```
-
-
-
-\### 2. Navigate to the project
-
-
-
-```bash
-
+git clone YOUR_GITHUB_REPOSITORY_URL
 cd PhishingEmailInvestigation
-
 ```
 
-
-
-\### 3. Install dependencies
-
-
+### 2. Install dependencies
 
 ```bash
-
-pip install -r requirements.txt
-
+pip install streamlit pandas
 ```
 
+### 3. Run the email analyzer
 
-
-\### 4. Analyze a legitimate email
-
-
+Analyze the suspicious email:
 
 ```bash
-
-python src/analyzer.py samples/legitimate\_email.eml
-
+python src/analyzer.py samples/suspicious_email.eml
 ```
 
-
-
-\### 5. Analyze a suspicious email
-
-
+Analyze the legitimate email:
 
 ```bash
-
-python src/analyzer.py samples/suspicious\_email.eml
-
+python src/analyzer.py samples/legitimate_email.eml
 ```
 
-
-
-\### 6. Launch the SOC dashboard
-
-
+### 4. Launch the SOC dashboard
 
 ```bash
-
-python -m streamlit run dashboard.py
-
+streamlit run dashboard.py
 ```
 
+## Sample Testing Results
 
+| Test Email | Risk Score | Threat Level |
+|---|---:|---|
+| Suspicious Email | 90/100 | Critical |
+| Legitimate Email | 0/100 | Low |
 
-Open the dashboard at:
+## Learning Outcomes
 
+- Understanding phishing email investigation.
+- Extracting and analyzing email headers.
+- Identifying Indicators of Compromise (IOCs).
+- Understanding SPF, DKIM and DMARC.
+- Implementing basic rule-based threat detection.
+- Generating SOC investigation reports.
+- Building an interactive security monitoring dashboard.
 
+## Disclaimer
 
-http://localhost:8501
+This project is developed for educational purposes and controlled laboratory testing. Its rule-based scoring is a demonstration and should not be treated as a production-grade email security solution.
 
+The sample emails use simulated data and reserved example domains and IP addresses.
 
+## Project Screenshots
 
-\## 🧪 Testing
+### 1. Dashboard Overview
+![Dashboard Overview](screenshots/dashboard_overview.png)
 
+### 2. Phishing Email Investigation
+![Phishing Email Investigation](screenshots/phising_investigation.png)
 
+### 3. Indicators of Compromise (IOC) Analysis
+![IOC Analysis](screenshots/ioc_analysis.png)
 
-The project was tested using sample legitimate and suspicious email files.
+### 4. Security Findings and Analyst Recommendation
+![Security Findings](screenshots/security_findings.png)
 
+### 5. Legitimate Email Investigation
+![Legitimate Email Investigation](screenshots/legitimate_email.png)
 
-
-Test scenarios include:
-
-
-
-\- Legitimate email analysis.
-
-\- Suspicious sender and Reply-To analysis.
-
-\- URL and IP extraction.
-
-\- Email authentication checks.
-
-\- Threat score calculation.
-
-\- Investigation report generation.
-
-
-
-\## 🛡️ Security Disclaimer
-
-
-
-This project is developed for educational purposes and cybersecurity training.
-
-
-
-Only use authorized email samples and isolated testing environments. Do not open suspicious links or attachments during investigations.
-
-
-
-A LOW risk score does not guarantee that an email is safe. Detection results require analyst verification.
-
-
-
-\## 👨‍💻 Author
-
-
-
-Cybersecurity Enthusiast | Aspiring SOC Analyst
-
-
-
-Skills: Python, Email Security, IOC Analysis, Phishing Detection, Security Investigation, Streamlit.
-
+### 6. Project Folder Structure
+![Project Structure](screenshots/project_structure.png)

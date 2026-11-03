@@ -1,12 +1,13 @@
 
 import re
+import ipaddress
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 
-# ==========================================
+# =====================================================
 # PROJECT CONFIGURATION
-# ==========================================
+# =====================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
@@ -18,9 +19,9 @@ st.set_page_config(
 )
 
 
-# ==========================================
+# =====================================================
 # DASHBOARD HEADER
-# ==========================================
+# =====================================================
 
 st.title("🛡️ SOC Phishing Email Investigation")
 st.caption(
@@ -30,20 +31,15 @@ st.caption(
 st.divider()
 
 
-# ==========================================
-# REPORT EXTRACTION FUNCTION
-# ==========================================
+# =====================================================
+# FIELD EXTRACTION
+# =====================================================
 
 def extract_field(content, field, default="N/A"):
 
-    pattern = (
-        rf"(?m)^{re.escape(field)}:[ \t]*(.*)$"
-    )
+    pattern = rf"(?mi)^\s*{re.escape(field)}\s*:\s*(.*?)\s*$"
 
-    match = re.search(
-        pattern,
-        content
-    )
+    match = re.search(pattern, content)
 
     if match:
         value = match.group(1).strip()
@@ -52,9 +48,175 @@ def extract_field(content, field, default="N/A"):
     return default
 
 
-# ==========================================
+# =====================================================
+# SECTION EXTRACTION
+# =====================================================
+
+SECTION_HEADINGS = [
+    "EMAIL DETAILS",
+    "EXTRACTED URLS",
+    "INDICATORS OF COMPROMISE",
+    "URL DOMAINS",
+    "IP ADDRESSES",
+    "EMAIL AUTHENTICATION",
+    "SECURITY FINDINGS",
+    "THREAT ASSESSMENT",
+    "ANALYST RECOMMENDATION",
+    "FINAL THREAT ASSESSMENT"
+]
+
+
+def extract_section(content, heading):
+
+    lines = content.splitlines()
+    collecting = False
+    results = []
+
+    for line in lines:
+
+        stripped = line.strip()
+
+        if re.fullmatch(
+            rf"{re.escape(heading)}\s*:?|{re.escape(heading)}",
+            stripped,
+            re.IGNORECASE
+        ):
+            collecting = True
+            continue
+
+        if not collecting:
+            continue
+
+        # Stop at the next known section heading
+        if any(
+            re.fullmatch(
+                rf"{re.escape(section)}\s*:?",
+                stripped,
+                re.IGNORECASE
+            )
+            for section in SECTION_HEADINGS
+            if section.lower() != heading.lower()
+        ):
+            break
+
+        # Ignore empty lines and separator lines
+        if not stripped or re.fullmatch(r"[-=_]{3,}", stripped):
+            continue
+
+        value = stripped.lstrip("-*• ").strip()
+
+        if value.lower() in [
+            "none",
+            "n/a",
+            "not available",
+            "no url domains found",
+            "no ip addresses found"
+        ]:
+            continue
+
+        results.append(value)
+
+    return results
+
+
+# =====================================================
+# VALIDATE AND EXTRACT IP ADDRESSES
+# =====================================================
+
+def extract_valid_ips(content):
+
+    raw_ips = extract_section(
+        content,
+        "IP ADDRESSES"
+    )
+
+    valid_ips = []
+
+    for item in raw_ips:
+
+        # Extract possible IPv4 or IPv6 addresses
+        candidates = re.findall(
+            r"(?<![\w:.])(?:\d{1,3}\.){3}\d{1,3}(?![\w:.])|"
+            r"(?<![\w:])[0-9a-fA-F:]{2,}(?![\w:])",
+            item
+        )
+
+        for candidate in candidates:
+
+            try:
+                validated_ip = str(
+                    ipaddress.ip_address(candidate)
+                )
+
+                if validated_ip not in valid_ips:
+                    valid_ips.append(validated_ip)
+
+            except ValueError:
+                continue
+
+    return valid_ips
+
+
+# =====================================================
+# RISK SCORE EXTRACTION
+# =====================================================
+
+def extract_score(content):
+
+    score_text = extract_field(
+        content,
+        "Risk Score",
+        "0/100"
+    )
+
+    match = re.search(
+        r"(\d{1,3})\s*/\s*100",
+        score_text
+    )
+
+    if match:
+        return min(100, int(match.group(1)))
+
+    match = re.search(r"\b(\d{1,3})\b", score_text)
+
+    if match:
+        return min(100, int(match.group(1)))
+
+    return 0
+
+
+# =====================================================
+# THREAT LEVEL EXTRACTION
+# =====================================================
+
+def extract_risk(content, score):
+
+    risk = extract_field(
+        content,
+        "Risk Level",
+        "UNKNOWN"
+    ).upper()
+
+    if risk not in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+
+        if score >= 75:
+            return "CRITICAL"
+
+        elif score >= 50:
+            return "HIGH"
+
+        elif score >= 25:
+            return "MEDIUM"
+
+        else:
+            return "LOW"
+
+    return risk
+
+
+# =====================================================
 # LOAD INVESTIGATION REPORTS
-# ==========================================
+# =====================================================
 
 def load_reports():
 
@@ -70,56 +232,27 @@ def load_reports():
 
     for file in report_files:
 
-        content = file.read_text(
-            encoding="utf-8"
-        )
+        try:
+            content = file.read_text(
+                encoding="utf-8",
+                errors="replace"
+            )
 
-        score_text = extract_field(
-            content,
-            "Risk Score",
-            "0/100"
-        )
+        except OSError:
+            continue
 
-        risk_text = extract_field(
-            content,
-            "Risk Level",
-            "UNKNOWN"
-        )
+        # Email details
+        sender = extract_field(content, "Sender")
+        recipient = extract_field(content, "Recipient")
+        reply_to = extract_field(content, "Reply-To")
+        subject = extract_field(content, "Subject")
+        date = extract_field(content, "Date")
 
-        # Extract numerical risk score
+        # Threat assessment
+        score = extract_score(content)
+        risk = extract_risk(content, score)
 
-        score_match = re.search(
-            r"\d+",
-            score_text
-        )
-
-        score = (
-            int(score_match.group())
-            if score_match else 0
-        )
-
-        # Extract email details
-
-        sender = extract_field(
-            content,
-            "Sender"
-        )
-
-        recipient = extract_field(
-            content,
-            "Recipient"
-        )
-
-        subject = extract_field(
-            content,
-            "Subject"
-        )
-
-        date = extract_field(
-            content,
-            "Date"
-        )
-
+        # Indicators of compromise
         sender_domain = extract_field(
             content,
             "Sender Domain"
@@ -130,49 +263,43 @@ def load_reports():
             "Reply-To Domain"
         )
 
-        # Extract IOC sections
-
-        url_section = re.search(
-            r"(?ms)^URL Domains\s*\n-+\s*\n(.*?)(?=^IP Addresses)",
-            content
+        # Extract URL domains
+        urls = extract_section(
+            content,
+            "URL DOMAINS"
         )
 
-        ip_section = re.search(
-            r"(?ms)^IP Addresses\s*\n-+\s*\n(.*?)(?=^SECURITY FINDINGS)",
-            content
+        # Extract IP addresses with validation
+        ips = extract_valid_ips(content)
+
+        # Extract security findings
+        findings = extract_section(
+            content,
+            "SECURITY FINDINGS"
         )
 
-        urls = []
-
-        if url_section:
-
-            urls = re.findall(
-                r"(?m)^-\s*(.+)$",
-                url_section.group(1)
-            )
-
-        ips = []
-
-        if ip_section:
-
-            ips = re.findall(
-                r"(?m)^-\s*(.+)$",
-                ip_section.group(1)
-            )
+        # Extract analyst recommendation
+        recommendations = extract_section(
+            content,
+            "ANALYST RECOMMENDATION"
+        )
 
         reports.append({
 
             "filename": file.name,
             "sender": sender,
             "recipient": recipient,
+            "reply_to": reply_to,
             "subject": subject,
             "date": date,
             "score": score,
-            "risk": risk_text.upper(),
+            "risk": risk,
             "sender_domain": sender_domain,
             "reply_domain": reply_domain,
             "urls": urls,
             "ips": ips,
+            "findings": findings,
+            "recommendations": recommendations,
             "content": content
 
         })
@@ -180,16 +307,16 @@ def load_reports():
     return reports
 
 
-# ==========================================
+# =====================================================
 # LOAD DATA
-# ==========================================
+# =====================================================
 
 reports = load_reports()
 
 
-# ==========================================
+# =====================================================
 # SECURITY OVERVIEW
-# ==========================================
+# =====================================================
 
 st.subheader("📊 Security Overview")
 
@@ -222,9 +349,9 @@ c5.metric("Low", low)
 st.divider()
 
 
-# ==========================================
+# =====================================================
 # THREAT DISTRIBUTION
-# ==========================================
+# =====================================================
 
 st.subheader("📈 Threat Distribution")
 
@@ -255,16 +382,14 @@ st.bar_chart(
 st.divider()
 
 
-# ==========================================
+# =====================================================
 # INVESTIGATION HISTORY
-# ==========================================
+# =====================================================
 
 st.subheader("🔍 Email Investigation History")
 
 severity_filter = st.selectbox(
-
     "Filter by threat severity",
-
     [
         "ALL",
         "CRITICAL",
@@ -272,7 +397,6 @@ severity_filter = st.selectbox(
         "MEDIUM",
         "LOW"
     ]
-
 )
 
 filtered_reports = reports
@@ -280,16 +404,14 @@ filtered_reports = reports
 if severity_filter != "ALL":
 
     filtered_reports = [
-
         r for r in reports
         if r["risk"] == severity_filter
-
     ]
 
 
-# ==========================================
+# =====================================================
 # INVESTIGATION TABLE
-# ==========================================
+# =====================================================
 
 if filtered_reports:
 
@@ -308,7 +430,7 @@ if filtered_reports:
         })
 
     st.dataframe(
-        table_data,
+        pd.DataFrame(table_data),
         use_container_width=True,
         hide_index=True
     )
@@ -320,9 +442,9 @@ else:
     )
 
 
-# ==========================================
+# =====================================================
 # INVESTIGATION DETAILS
-# ==========================================
+# =====================================================
 
 st.divider()
 
@@ -344,18 +466,24 @@ if filtered_reports:
 
     if selected_report:
 
+        # ---------------------------------------------
+        # EMAIL INFORMATION
+        # ---------------------------------------------
+
         col1, col2 = st.columns(2)
 
         with col1:
 
-            st.write(
-                "**Sender:**",
-                selected_report["sender"]
-            )
+            st.write("**Sender:**", selected_report["sender"])
 
             st.write(
                 "**Recipient:**",
                 selected_report["recipient"]
+            )
+
+            st.write(
+                "**Reply-To:**",
+                selected_report["reply_to"]
             )
 
             st.write(
@@ -380,9 +508,11 @@ if filtered_reports:
                 selected_report["risk"]
             )
 
-        # ==================================
-        # IOC VISUALIZATION
-        # ==================================
+        st.divider()
+
+        # ---------------------------------------------
+        # INDICATORS OF COMPROMISE
+        # ---------------------------------------------
 
         st.subheader("🎯 Indicators of Compromise")
 
@@ -424,7 +554,7 @@ if filtered_reports:
 
         else:
 
-            st.write("No URL domains found.")
+            st.info("No URL domains found.")
 
         st.write("**IP Addresses**")
 
@@ -435,23 +565,63 @@ if filtered_reports:
 
         else:
 
-            st.write("No IP addresses found.")
+            st.info("No valid IP addresses found.")
 
-        # ==================================
-        # FULL INVESTIGATION REPORT
-        # ==================================
+        st.divider()
+
+        # ---------------------------------------------
+        # SECURITY FINDINGS
+        # ---------------------------------------------
+
+        st.subheader("🚨 Security Findings")
+
+        if selected_report["findings"]:
+
+            for finding in selected_report["findings"]:
+                st.warning(finding)
+
+        else:
+
+            st.success(
+                "No security findings recorded in this report."
+            )
+
+        st.divider()
+
+        # ---------------------------------------------
+        # ANALYST RECOMMENDATION
+        # ---------------------------------------------
+
+        st.subheader("🛡️ Analyst Recommendation")
+
+        if selected_report["recommendations"]:
+
+            for recommendation in selected_report["recommendations"]:
+                st.info(recommendation)
+
+        else:
+
+            st.write(
+                "No analyst recommendation recorded."
+            )
+
+        st.divider()
+
+        # ---------------------------------------------
+        # COMPLETE SOC INVESTIGATION REPORT
+        # ---------------------------------------------
 
         with st.expander(
-            "View Complete SOC Investigation Report"
+            "📄 View Complete SOC Investigation Report"
         ):
 
             st.text(
                 selected_report["content"]
             )
 
-        # ==================================
+        # ---------------------------------------------
         # DOWNLOAD REPORT
-        # ==================================
+        # ---------------------------------------------
 
         st.download_button(
 
@@ -461,7 +631,9 @@ if filtered_reports:
 
             file_name=selected_report["filename"],
 
-            mime="text/plain"
+            mime="text/plain",
+
+            key="download_selected_report"
 
         )
 
@@ -472,9 +644,9 @@ else:
     )
 
 
-# ==========================================
+# =====================================================
 # DASHBOARD FOOTER
-# ==========================================
+# =====================================================
 
 st.divider()
 

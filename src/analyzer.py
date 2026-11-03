@@ -1,10 +1,11 @@
-
 import re
 import sys
+import ipaddress
 from datetime import datetime
 from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -14,120 +15,225 @@ from urllib.parse import urlparse
 # ==========================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 DEFAULT_EMAIL = BASE_DIR / "samples" / "suspicious_email.eml"
-
 OUTPUT_DIR = BASE_DIR / "output"
 
 
 # ==========================================
-# EMAIL ANALYSIS FUNCTION
+# HTML EMAIL BODY PARSER
 # ==========================================
 
-def analyze_email(file_path):
+class EmailHTMLParser(HTMLParser):
 
-    # Read and parse email
-    with open(file_path, "rb") as file:
-        msg = BytesParser(
-            policy=policy.default
-        ).parse(file)
+    def __init__(self):
+        super().__init__()
+        self.text_parts = []
+        self.links = []
 
-    # Extract email headers
-    sender = msg.get("From", "")
-    recipient = msg.get("To", "")
-    reply_to = msg.get("Reply-To", "")
-    subject = msg.get("Subject", "")
-    date = msg.get("Date", "")
+    def handle_data(self, data):
+        text = data.strip()
+        if text:
+            self.text_parts.append(text)
 
-    # Extract email addresses
-    sender_email = parseaddr(sender)[1].lower()
-    reply_email = parseaddr(reply_to)[1].lower()
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            for key, value in attrs:
+                if key.lower() == "href" and value:
+                    self.links.append(value)
 
-    # Extract sender domain
-    sender_domain = (
-        sender_email.split("@")[-1]
-        if "@" in sender_email else ""
-    )
 
-    reply_domain = (
-        reply_email.split("@")[-1]
-        if "@" in reply_email else ""
-    )
+# ==========================================
+# EXTRACT EMAIL BODY
+# ==========================================
 
-    # ======================================
-    # EXTRACT EMAIL BODY
-    # ======================================
+def extract_email_body(msg):
 
-    body = msg.get_body(preferencelist=("plain",))
+    text_parts = []
+    html_links = []
 
-    if body:
-        email_body = body.get_content()
-    else:
-        email_body = ""
+    for part in msg.walk():
 
-    # ======================================
-    # EXTRACT URLS
-    # ======================================
+        if part.get_content_maintype() == "multipart":
+            continue
 
-    urls = re.findall(
-        r'https?://[^\s<>"\']+',
-        email_body
-    )
+        if part.get_content_disposition() == "attachment":
+            continue
 
-    # ======================================
-    # EXTRACT URL DOMAINS
-    # ======================================
+        content_type = part.get_content_type()
 
-    url_domains = []
+        if content_type not in ("text/plain", "text/html"):
+            continue
+
+        try:
+            content = part.get_content()
+        except Exception:
+            continue
+
+        if not isinstance(content, str):
+            continue
+
+        if content_type == "text/plain":
+
+            text_parts.append(content)
+
+        elif content_type == "text/html":
+
+            parser = EmailHTMLParser()
+            parser.feed(content)
+
+            text_parts.extend(parser.text_parts)
+            html_links.extend(parser.links)
+
+    email_body = "\n".join(text_parts)
+
+    return email_body, html_links
+
+
+# ==========================================
+# EXTRACT URLS
+# ==========================================
+
+def extract_urls(email_body, html_links):
+
+    url_pattern = r'https?://[^\s<>"\']+'
+
+    body_urls = re.findall(url_pattern, email_body)
+
+    all_urls = body_urls + [
+        link for link in html_links
+        if link.lower().startswith(("http://", "https://"))
+    ]
+
+    cleaned_urls = []
+
+    for url in all_urls:
+
+        url = url.rstrip(".,;:!?)]}")
+
+        if url not in cleaned_urls:
+            cleaned_urls.append(url)
+
+    return cleaned_urls
+
+
+# ==========================================
+# EXTRACT URL DOMAINS
+# ==========================================
+
+def extract_url_domains(urls):
+
+    domains = []
 
     for url in urls:
 
-        domain = urlparse(url).hostname
+        try:
+            domain = urlparse(url).hostname
 
-        if domain:
-            url_domains.append(domain.lower())
+            if domain:
 
-    # ======================================
-    # EXTRACT IP ADDRESSES
-    # ======================================
+                domain = domain.lower().rstrip(".")
 
-    received_headers = msg.get_all("Received", [])
+                if domain not in domains:
+                    domains.append(domain)
 
-    ip_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
+        except Exception:
+            continue
+
+    return domains
+
+
+# ==========================================
+# EXTRACT IP ADDRESSES
+# ==========================================
+
+def extract_ip_addresses(msg, urls):
 
     ip_addresses = []
 
+    received_headers = msg.get_all("Received", [])
+
+    ip_pattern = r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])'
+
     for header in received_headers:
 
-        ips = re.findall(
+        matches = re.findall(
             ip_pattern,
             str(header)
         )
 
-        ip_addresses.extend(ips)
+        for ip in matches:
 
-    ip_addresses = sorted(set(ip_addresses))
+            try:
+                ipaddress.ip_address(ip)
+                ip_addresses.append(ip)
 
-    # ======================================
-    # EMAIL AUTHENTICATION RESULTS
-    # ======================================
+            except ValueError:
+                continue
+
+    # Also check URLs for IP-based hosts
+
+    for url in urls:
+
+        hostname = urlparse(url).hostname
+
+        if hostname:
+
+            try:
+                ipaddress.ip_address(hostname)
+                ip_addresses.append(hostname)
+
+            except ValueError:
+                pass
+
+    return sorted(set(ip_addresses))
+
+
+# ==========================================
+# EMAIL AUTHENTICATION ANALYSIS
+# ==========================================
+
+def analyze_authentication(msg):
+
+    headers = msg.get_all("Authentication-Results", [])
 
     auth_results = " ".join(
-        str(item)
-        for item in msg.get_all(
-            "Authentication-Results", []
-        )
+        str(header) for header in headers
     ).lower()
 
-    # ======================================
-    # PHISHING DETECTION ENGINE
-    # ======================================
+    results = {
+        "spf": "Not provided",
+        "dkim": "Not provided",
+        "dmarc": "Not provided"
+    }
+
+    for mechanism in results:
+
+        match = re.search(
+            rf'\b{mechanism}\s*=\s*([a-z]+)',
+            auth_results
+        )
+
+        if match:
+            results[mechanism] = match.group(1).upper()
+
+    return results
+
+
+# ==========================================
+# PHISHING DETECTION ENGINE
+# ==========================================
+
+def calculate_risk(
+    sender_domain,
+    reply_domain,
+    subject,
+    email_body,
+    url_domains,
+    auth_results
+):
 
     risk_score = 0
-
     findings = []
-
-    print("\n========== PHISHING DETECTION ENGINE ==========")
 
     # RULE 1: Sender and Reply-To mismatch
 
@@ -157,8 +263,7 @@ def analyze_email(file_path):
     ).lower()
 
     detected_keywords = [
-        word
-        for word in suspicious_keywords
+        word for word in suspicious_keywords
         if word in combined_text
     ]
 
@@ -167,165 +272,104 @@ def analyze_email(file_path):
         risk_score += 15
 
         findings.append(
-            "Suspicious keywords: "
+            "Suspicious keywords detected: "
             + ", ".join(detected_keywords)
         )
 
     # RULE 3: SPF authentication
 
-    if re.search(r'\bspf=fail\b', auth_results):
+    spf = auth_results["spf"]
+
+    if spf in ("FAIL", "SOFTFAIL", "PERMERROR"):
 
         risk_score += 20
 
         findings.append(
-            "SPF authentication failure"
+            f"SPF authentication problem: {spf}"
         )
 
     # RULE 4: DKIM authentication
 
-    if re.search(r'\bdkim=(none|fail)\b', auth_results):
+    dkim = auth_results["dkim"]
+
+    if dkim in ("FAIL", "PERMERROR"):
 
         risk_score += 10
 
         findings.append(
-            "DKIM missing or failed"
+            f"DKIM authentication problem: {dkim}"
         )
 
     # RULE 5: DMARC authentication
 
-    if re.search(r'\bdmarc=fail\b', auth_results):
+    dmarc = auth_results["dmarc"]
+
+    if dmarc in ("FAIL", "PERMERROR"):
 
         risk_score += 20
 
         findings.append(
-            "DMARC authentication failure"
+            f"DMARC authentication problem: {dmarc}"
         )
 
     # RULE 6: URL domain comparison
 
-    if sender_domain and any(
-        domain != sender_domain
-        for domain in url_domains
-    ):
+    if sender_domain:
 
-        risk_score += 10
+        mismatched_domains = [
+            domain for domain in url_domains
+            if domain != sender_domain
+        ]
 
-        findings.append(
-            "URL domain differs from sender domain"
-        )
+        if mismatched_domains:
 
-    # ======================================
-    # RISK CLASSIFICATION
-    # ======================================
+            risk_score += 10
+
+            findings.append(
+                "URL domain differs from sender domain"
+            )
+
+    # FINAL RISK SCORE
 
     risk_score = min(risk_score, 100)
 
     if risk_score >= 75:
-
         risk_level = "CRITICAL"
 
     elif risk_score >= 50:
-
         risk_level = "HIGH"
 
     elif risk_score >= 25:
-
         risk_level = "MEDIUM"
 
     else:
-
         risk_level = "LOW"
 
-    # ======================================
-    # DISPLAY EMAIL DETAILS
-    # ======================================
+    return risk_score, risk_level, findings
 
-    print("\n[+] EMAIL DETAILS")
 
-    print("Sender:", sender)
-    print("Recipient:", recipient)
-    print("Reply-To:", reply_to)
-    print("Subject:", subject)
-    print("Date:", date)
+# ==========================================
+# GENERATE SOC INVESTIGATION REPORT
+# ==========================================
 
-    # ======================================
-    # DISPLAY EXTRACTED URLS
-    # ======================================
+def generate_report(
+    sender,
+    recipient,
+    reply_to,
+    subject,
+    date,
+    sender_domain,
+    reply_domain,
+    urls,
+    url_domains,
+    ip_addresses,
+    auth_results,
+    findings,
+    risk_score,
+    risk_level
+):
 
-    print("\n[+] EXTRACTED URLS")
-
-    if urls:
-
-        for url in urls:
-            print("-", url)
-
-    else:
-
-        print("No URLs found")
-
-    # ======================================
-    # DISPLAY IOCs
-    # ======================================
-
-    print("\n[+] INDICATORS OF COMPROMISE (IOCs)")
-
-    print("Sender Domain:", sender_domain or "Not available")
-
-    print("Reply-To Domain:", reply_domain or "Not available")
-
-    print("\nURL Domains:")
-
-    if url_domains:
-
-        for domain in url_domains:
-            print("-", domain)
-
-    else:
-
-        print("No URL domains found")
-
-    print("\nIP Addresses:")
-
-    if ip_addresses:
-
-        for ip in ip_addresses:
-            print("-", ip)
-
-    else:
-
-        print("No IP addresses found")
-
-    # ======================================
-    # DISPLAY SECURITY FINDINGS
-    # ======================================
-
-    print("\n[+] SECURITY FINDINGS")
-
-    if findings:
-
-        for finding in findings:
-
-            print("[!] ", finding)
-
-    else:
-
-        print("No suspicious indicators detected")
-
-    # ======================================
-    # DISPLAY THREAT ASSESSMENT
-    # ======================================
-
-    print("\n[+] FINAL THREAT ASSESSMENT")
-
-    print("Risk Score:", str(risk_score) + "/100")
-
-    print("Risk Level:", risk_level)
-
-    # ======================================
-    # GENERATE SOC INVESTIGATION REPORT
-    # ======================================
-
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime(
         "%Y%m%d_%H%M%S_%f"
@@ -334,6 +378,36 @@ def analyze_email(file_path):
     report_file = OUTPUT_DIR / (
         f"phishing_report_{timestamp}.txt"
     )
+
+    def format_list(items):
+
+        if items:
+            return "\n".join(
+                f"- {item}" for item in items
+            )
+
+        return "- None"
+
+    if risk_score >= 50:
+
+        recommendation = (
+            "Escalate for further investigation. "
+            "Do not interact with suspicious links."
+        )
+
+    elif risk_score >= 25:
+
+        recommendation = (
+            "Investigate the identified indicators "
+            "before trusting this email."
+        )
+
+    else:
+
+        recommendation = (
+            "No major suspicious indicators detected. "
+            "Continue normal email security checks."
+        )
 
     report_content = f"""
 ========== SOC INCIDENT REPORT ==========
@@ -344,16 +418,16 @@ Investigation Date:
 EMAIL DETAILS
 -------------
 
-Sender: {sender}
-Recipient: {recipient}
-Reply-To: {reply_to}
-Subject: {subject}
-Date: {date}
+Sender: {sender or "N/A"}
+Recipient: {recipient or "N/A"}
+Reply-To: {reply_to or "N/A"}
+Subject: {subject or "N/A"}
+Date: {date or "N/A"}
 
 EXTRACTED URLS
 --------------
 
-{chr(10).join(urls) if urls else "No URLs found"}
+{format_list(urls)}
 
 INDICATORS OF COMPROMISE
 ------------------------
@@ -361,16 +435,25 @@ INDICATORS OF COMPROMISE
 Sender Domain: {sender_domain or "Not available"}
 Reply-To Domain: {reply_domain or "Not available"}
 
-URL Domains:
-{chr(10).join(url_domains) if url_domains else "None"}
+URL Domains
+-----------
+{format_list(url_domains)}
 
-IP Addresses:
-{chr(10).join(ip_addresses) if ip_addresses else "None"}
+IP Addresses
+------------
+{format_list(ip_addresses)}
+
+EMAIL AUTHENTICATION
+--------------------
+
+SPF: {auth_results["spf"]}
+DKIM: {auth_results["dkim"]}
+DMARC: {auth_results["dmarc"]}
 
 SECURITY FINDINGS
 -----------------
 
-{chr(10).join(findings) if findings else "No suspicious indicators detected"}
+{format_list(findings)}
 
 THREAT ASSESSMENT
 -----------------
@@ -381,7 +464,7 @@ Risk Level: {risk_level}
 ANALYST RECOMMENDATION
 ----------------------
 
-{"Escalate for further investigation. Do not interact with suspicious links." if risk_score >= 50 else "Review findings and continue normal email security checks."}
+{recommendation}
 
 ==========================================
 """
@@ -391,15 +474,155 @@ ANALYST RECOMMENDATION
         encoding="utf-8"
     )
 
-    print("\n[+] SOC REPORT GENERATED")
+    return report_file
 
+
+# ==========================================
+# MAIN EMAIL ANALYSIS FUNCTION
+# ==========================================
+
+def analyze_email(file_path):
+
+    with open(file_path, "rb") as file:
+
+        msg = BytesParser(
+            policy=policy.default
+        ).parse(file)
+
+    # EMAIL HEADERS
+
+    sender = str(msg.get("From", ""))
+    recipient = str(msg.get("To", ""))
+    reply_to = str(msg.get("Reply-To", ""))
+    subject = str(msg.get("Subject", ""))
+    date = str(msg.get("Date", ""))
+
+    # EMAIL ADDRESSES
+
+    sender_email = parseaddr(sender)[1].lower()
+    reply_email = parseaddr(reply_to)[1].lower()
+
+    sender_domain = (
+        sender_email.split("@")[-1]
+        if "@" in sender_email else ""
+    )
+
+    reply_domain = (
+        reply_email.split("@")[-1]
+        if "@" in reply_email else ""
+    )
+
+    # EMAIL BODY
+
+    email_body, html_links = extract_email_body(msg)
+
+    # URL EXTRACTION
+
+    urls = extract_urls(email_body, html_links)
+
+    url_domains = extract_url_domains(urls)
+
+    # IP EXTRACTION
+
+    ip_addresses = extract_ip_addresses(msg, urls)
+
+    # AUTHENTICATION
+
+    auth_results = analyze_authentication(msg)
+
+    # RISK CALCULATION
+
+    risk_score, risk_level, findings = calculate_risk(
+        sender_domain,
+        reply_domain,
+        subject,
+        email_body,
+        url_domains,
+        auth_results
+    )
+
+    # ======================================
+    # TERMINAL OUTPUT
+    # ======================================
+
+    print("\n========== PHISHING DETECTION ENGINE ==========")
+
+    print("\n[+] EMAIL DETAILS")
+
+    print("Sender:", sender or "N/A")
+    print("Recipient:", recipient or "N/A")
+    print("Reply-To:", reply_to or "N/A")
+    print("Subject:", subject or "N/A")
+    print("Date:", date or "N/A")
+
+    print("\n[+] EXTRACTED URLS")
+
+    print("\n".join(urls) if urls else "No URLs found")
+
+    print("\n[+] INDICATORS OF COMPROMISE")
+
+    print("Sender Domain:", sender_domain or "Not available")
+    print("Reply-To Domain:", reply_domain or "Not available")
+
+    print("\nURL Domains:")
+
+    print("\n".join(url_domains) if url_domains else "None")
+
+    print("\nIP Addresses:")
+
+    print("\n".join(ip_addresses) if ip_addresses else "None")
+
+    print("\n[+] EMAIL AUTHENTICATION")
+
+    for mechanism, result in auth_results.items():
+
+        print(f"{mechanism.upper()}: {result}")
+
+    print("\n[+] SECURITY FINDINGS")
+
+    if findings:
+
+        for finding in findings:
+            print("[!] ", finding)
+
+    else:
+
+        print("No suspicious indicators detected")
+
+    print("\n[+] FINAL THREAT ASSESSMENT")
+
+    print(f"Risk Score: {risk_score}/100")
+    print(f"Risk Level: {risk_level}")
+
+    # ======================================
+    # REPORT GENERATION
+    # ======================================
+
+    report_file = generate_report(
+        sender,
+        recipient,
+        reply_to,
+        subject,
+        date,
+        sender_domain,
+        reply_domain,
+        urls,
+        url_domains,
+        ip_addresses,
+        auth_results,
+        findings,
+        risk_score,
+        risk_level
+    )
+
+    print("\n[+] SOC REPORT GENERATED")
     print("Report Location:", report_file)
 
     print("\n========== INVESTIGATION COMPLETE ==========")
 
 
 # ==========================================
-# MAIN PROGRAM
+# PROGRAM ENTRY POINT
 # ==========================================
 
 if __name__ == "__main__":
@@ -419,6 +642,7 @@ if __name__ == "__main__":
         email_file.relative_to(BASE_DIR.resolve())
 
         if not email_file.is_file():
+
             print("Error: Email file not found!")
             sys.exit(1)
 
@@ -426,7 +650,10 @@ if __name__ == "__main__":
 
     except ValueError:
 
-        print("Error: Email file must be inside the project folder.")
+        print(
+            "Error: Email file must be inside "
+            "the project folder."
+        )
 
         sys.exit(1)
 

@@ -2,7 +2,7 @@
 ========== SOC INCIDENT REPORT ==========
 
 Investigation Date:
-2026-11-03 13:16:13
+2026-11-03 14:32:01
 
 EMAIL DETAILS
 -------------
@@ -16,7 +16,7 @@ Date: Tue, 03 Nov 2026 09:00:00 +0530
 EXTRACTED URLS
 --------------
 
-No URLs found
+- None
 
 INDICATORS OF COMPROMISE
 ------------------------
@@ -24,16 +24,25 @@ INDICATORS OF COMPROMISE
 Sender Domain: company.example
 Reply-To Domain: company.example
 
-URL Domains:
-None
+URL Domains
+-----------
+- None
 
-IP Addresses:
-None
+IP Addresses
+------------
+- None
+
+EMAIL AUTHENTICATION
+--------------------
+
+SPF: PASS
+DKIM: PASS
+DMARC: PASS
 
 SECURITY FINDINGS
 -----------------
 
-No suspicious indicators detected
+- None
 
 THREAT ASSESSMENT
 -----------------
@@ -44,6 +53,6 @@ Risk Level: LOW
 ANALYST RECOMMENDATION
 ----------------------
 
-Review findings and continue normal email security checks.
+No major suspicious indicators detected. Continue normal email security checks.
 
 ==========================================
