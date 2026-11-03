@@ -1,0 +1,18 @@
+From: HR Department <hr@company.example>
+To: employee@company.example
+Reply-To: hr@company.example
+Subject: Monthly Employee Newsletter
+Date: Tue, 03 Nov 2026 09:00:00 +0530
+Message-ID: <newsletter001@company.example>
+Authentication-Results: mail.company.example; spf=pass; dkim=pass; dmarc=pass
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Hello Employee,
+
+We are pleased to share the monthly company newsletter.
+
+Please find the latest company announcements and employee updates.
+
+Thank you,
+HR Department

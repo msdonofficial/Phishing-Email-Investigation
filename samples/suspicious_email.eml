@@ -1,0 +1,26 @@
+From: "Payroll Team" <payroll@example.com>
+To: employee@company.example
+Reply-To: support@example.net
+Return-Path: <bounce@example.net>
+Subject: Urgent! Verify Your Payroll Account
+Date: Tue, 3 Nov 2026 10:30:00 +0530
+Message-ID: <test123@example.net>
+Received: from mail.example.net (192.0.2.45)
+Authentication-Results: example.local;
+    spf=fail;
+    dkim=none;
+    dmarc=fail
+
+Dear Employee,
+
+We detected an issue with your payroll account.
+
+Your account access may be suspended unless you verify
+your details immediately.
+
+Please visit the following link to verify your account:
+
+https://example.net/secure-login
+
+Regards,
+IT Support Team

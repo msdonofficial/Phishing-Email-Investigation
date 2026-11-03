@@ -1,0 +1,35 @@
+
+========== SOC INCIDENT REPORT ==========
+
+Investigation Date: 2026-11-03 12:28:31
+
+EMAIL DETAILS
+-------------
+Sender: Payroll Team <payroll@example.com>
+Recipient: employee@company.example
+Reply-To: support@example.net
+Subject: Urgent! Verify Your Payroll Account
+
+EXTRACTED URLS
+--------------
+https://example.net/secure-login
+
+SECURITY FINDINGS
+-----------------
+Sender and Reply-To domain mismatch detected
+Suspicious keywords: urgent, immediately, suspended, verify your account
+SPF authentication failure
+DKIM missing or failed
+DMARC authentication failure
+URL domain differs from sender domain
+
+THREAT ASSESSMENT
+-----------------
+Risk Score: 100/100
+Risk Level: CRITICAL
+
+ANALYST RECOMMENDATION
+----------------------
+Escalate for further investigation. Do not interact with suspicious links.
+
+==========================================

@@ -1,0 +1,49 @@
+
+========== SOC INCIDENT REPORT ==========
+
+Investigation Date:
+2026-11-03 13:16:13
+
+EMAIL DETAILS
+-------------
+
+Sender: HR Department <hr@company.example>
+Recipient: employee@company.example
+Reply-To: hr@company.example
+Subject: Monthly Employee Newsletter
+Date: Tue, 03 Nov 2026 09:00:00 +0530
+
+EXTRACTED URLS
+--------------
+
+No URLs found
+
+INDICATORS OF COMPROMISE
+------------------------
+
+Sender Domain: company.example
+Reply-To Domain: company.example
+
+URL Domains:
+None
+
+IP Addresses:
+None
+
+SECURITY FINDINGS
+-----------------
+
+No suspicious indicators detected
+
+THREAT ASSESSMENT
+-----------------
+
+Risk Score: 0/100
+Risk Level: LOW
+
+ANALYST RECOMMENDATION
+----------------------
+
+Review findings and continue normal email security checks.
+
+==========================================
